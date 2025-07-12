@@ -1,27 +1,60 @@
 from flask import Flask, request, jsonify
 import subprocess
-import uuid
 import os
+import uuid
 
 app = Flask(__name__)
+
 DOWNLOAD_DIR = "downloads"
+
+# Tạo thư mục nếu chưa tồn tại
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 @app.route("/")
 def home():
-    return "✅ API server is live on Render -TLX!"
+    return "✅ Server is running. Use POST /download to get started!"
 
 @app.route("/download", methods=["POST"])
-def download():
-    url = request.json.get("url")
-    if not url:
-        return jsonify({"error": "Missing URL"}), 400
-
-    video_id = str(uuid.uuid4())[:8]
-    output_path = f"{DOWNLOAD_DIR}/{video_id}.mp4"
-
+def download_video():
     try:
-        subprocess.run(["yt-dlp", "-f", "best", "-o", output_path, url], check=True)
-        return jsonify({"status": "success", "file": output_path})
-    except subprocess.CalledProcessError as e:
-        return jsonify({"status": "error", "message": e.stderr}), 500
+        data = request.get_json(force=True)
+        url = data.get("url")
+
+        if not url:
+            return jsonify({"status": "error", "message": "Thiếu URL video."}), 400
+
+        # Tạo tên file ngẫu nhiên để tránh trùng
+        output_name = os.path.join(DOWNLOAD_DIR, str(uuid.uuid4()))
+
+        # Lệnh yt-dlp tải video MP4 tốt nhất
+        command = [
+            "yt-dlp",
+            "-f", "best[ext=mp4]/best",
+            "-o", f"{output_name}.%(ext)s",
+            url
+        ]
+
+        # Thực thi
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        if result.returncode != 0:
+            return jsonify({
+                "status": "error",
+                "message": "Tải video thất bại.",
+                "error_detail": result.stderr
+            }), 500
+
+        # Tìm file đã tải
+        downloaded_files = [f for f in os.listdir(DOWNLOAD_DIR) if f.startswith(os.path.basename(output_name))]
+        if not downloaded_files:
+            return jsonify({"status": "error", "message": "Không tìm thấy file đã tải."}), 500
+
+        return jsonify({
+            "status": "success",
+            "message": "Tải video thành công!",
+            "filename": downloaded_files[0]
+        })
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
