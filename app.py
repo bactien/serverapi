@@ -9,18 +9,19 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 @app.route("/")
 def home():
-    return "✅ Server is running!"
+    return "✅ API server is live on Render!"
 
 @app.route("/download", methods=["POST"])
 def download():
-    data = request.json
-    url = data.get("url")
+    url = request.json.get("url")
+    if not url:
+        return jsonify({"error": "Missing URL"}), 400
+
     video_id = str(uuid.uuid4())[:8]
     output_path = f"{DOWNLOAD_DIR}/{video_id}.mp4"
 
     try:
-        cmd = ["yt-dlp", "-f", "best", "-o", output_path, url]
-        subprocess.run(cmd, check=True)
+        subprocess.run(["yt-dlp", "-f", "best", "-o", output_path, url], check=True)
         return jsonify({"status": "success", "file": output_path})
     except subprocess.CalledProcessError as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
+        return jsonify({"status": "error", "message": e.stderr}), 500
